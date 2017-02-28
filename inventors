@@ -1,0 +1,88 @@
+# -*- coding: utf-8 -*-
+import time
+from html.parser import HTMLParser
+import numpy as np
+import urllib
+from urllib import request
+from openpyxl import Workbook
+hds=[{'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1.6) Gecko/20091201 Firefox/3.5.6'},{'Mozilla/5.0 (Windows NT 6.2) AppleWebKit/535.11 (KHTML, like Gecko) Chrome/17.0.963.12 Safari/535.11'},{'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Trident/6.0)'}]
+def do_spider():
+	name_lists=[]
+	url_full=[]
+	page_num=1
+	total_len=[]
+	len_tag=0
+	for page_num in range(2):
+		# url='https://www.douban.com/tag/%E5%B0%8F%E8%AF%B4/book?start=0'
+		#url='https://www.douban.com/tag/'+urllib.parse.quote(book_tag)+'/book?start='+str(page_num*15)
+		url='https://patentscope.wipo.int/search/en/result.jsf?currentNavigationRow=2&prevCurrentNavigationRow='+str(page_num)+'&query=PA:ZTE%20AND%20AD:2008%20&office=&sortOption=Pub%20Date%20Desc&prevFilter=&maxRec=5168&viewOption=All&listLengthOption=10'
+		reg=request.Request(url)
+		reg.add_header('User-Agent',hds[page_num%len(hds)])
+		with request.urlopen(url) as f:
+			source_code=f.read().decode('utf-8')
+		# time.sleep(np.random.rand()*1)
+		html1=source_code
+		class MyHTMLParser(HTMLParser):  #解析html数据
+			def handle_starttag(self,tag,attrs):
+				if tag=='a' and len(attrs)==4:
+					url_1=attrs[2][1]
+					url_full.append('https://patentscope.wipo.int/search/en/'+url_1)
+					# print(url_full)
+		parser=MyHTMLParser()
+		parser.feed(html1)
+		# print(url_full)
+		for url_1 in url_full:
+			reg_1=request.Request(url_1)
+			reg.add_header('User-Agent',hds[page_num%len(hds)])
+			with request.urlopen(url_1) as f:
+				source_code_full=f.read().decode('utf-8')
+			time.sleep(np.random.rand()*1)
+			html_full=source_code_full.replace(',',' ').replace('<br/>',',')
+			# print(html_full.encode('gbk', 'ignore'))
+			class MyHTMLParserfull(HTMLParser):  #解析第二层html数据
+				enter_apl=False
+				enter_inv=False
+				enter_title=False
+				def handle_starttag(self,tag,attrs):
+					if tag=='span' and attrs[0][1]=='detailMainForm:NPapplicants':
+						self.enter_apl=True
+					if tag=='span' and attrs[0][1]=='detailMainForm:NPinventors':
+						self.enter_inv=True
+					if tag=='span' and attrs[0][1]=='trans-section NPtitle':
+						self.enter_title=True
+				def handle_endtag(self,tag):
+					if tag=='span' and self.enter_apl:
+						self.enter_apl=False
+					if tag=='span' and self.enter_inv:
+						self.enter_inv=False
+					if tag=='span' and self.enter_title:
+						self.enter_title=False
+				def handle_data(self,data):
+					global name_list
+					if self.enter_apl:
+						name_list={}
+						name_list['applicants']=data
+					if self.enter_inv:
+						name_list['inventors']=data
+					if self.enter_title:
+						name_list['title']=data
+						name_lists.append(name_list)
+			parserall=MyHTMLParserfull()
+			parserall.feed(html_full)
+		print('Downloading Information From pag %d,TotalNum %d'%(page_num,len(name_lists)))
+	return name_lists
+def print_book_lists_excel(name_lists):
+	wb = Workbook(write_only=True)
+	ws=[]
+	ws=wb.create_sheet(title='2008')
+	ws.append(['序号','applicants','inventors','title'])
+	count=1
+	for i in name_lists:  #按标签把爬下的数据写入
+		ws.append([count,i['applicants'],i['inventors'],i['title']])
+		count+=1
+	save_path='zte_applicants'
+	save_path+='.xlsx'
+	wb.save(save_path)
+name_lists=do_spider()
+# print(name_lists)
+print_book_lists_excel(name_lists)
